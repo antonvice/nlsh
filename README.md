@@ -57,29 +57,16 @@ go install github.com/antonvice/nlsh-pro@latest
 
 ## ⚙️ Configuration
 
-Your config lives at `~/.config/nlsh/config.json`.
-
-```json
-{
-  "engine": "gemini", 
-  "gemini": {
-    "api_key": "YOUR_KEY_HERE",
-    "model": "gemini-2.0-flash"
-  },
-  "rules": [
-    "Prefer modern tools (rg over grep, fd over find, bat over cat).",
-    "Use fish shell syntax."
-  ]
-}
-```
-
-*Note: If `api_key` is empty, it auto-switches to Ollama.*
-
----
+- **Config File**: `~/.config/nlsh/config.json`
+- **Global Context**: `~/.config/nlsh/context.md` (Add your preferences here, e.g., "Always use git status -sb")
+- **Project Context**: `.nlsh-context` in any directory.
+- **Environment**: 
+  - `GEMINI_API_KEY`: Set your key here (or via config).
+  - `NLSH_ENGINE`: Force `gemini` or `ollama`.
 
 ## 🧙 Cool Factor & Status
 
-Run `nlsh-pro status` to see your Neural Link diagnostics (Connectivity, active model, and local context).
+Run `nlsh-pro status` to see diagnostics.
 
 Developed by **Anton Vice**.
 *Maximum VibeRot Achieved.*

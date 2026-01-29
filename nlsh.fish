@@ -35,7 +35,7 @@ function __nlsh_pro_invoke
         echo " ╭────────────────────────────────────────────────────────────────────────────"
         echo -n " │ "
         set_color -o yellow
-        echo "SYNAPTIC PROPOSAL:"
+        echo "Proposed Command::"
         
         # Highlight the command line
         set_color normal

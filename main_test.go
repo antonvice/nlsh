@@ -16,7 +16,7 @@ func TestIsLikelyCommand(t *testing.T) {
 		{"npm install", true},
 		{"list all files", false},
 		{"show me the money", false},
-		{"what time is it", false},
+		{"why time is it", false},
 		{"", false},
 		// These might depend on local environment, effectively checking "command existing"
 		// We can't guarantee 'randomcommandxyz' doesn't exist but it's unlikely

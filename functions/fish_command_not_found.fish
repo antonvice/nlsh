@@ -37,7 +37,7 @@ function fish_command_not_found --on-event fish_command_not_found
         echo " ╭────────────────────────────────────────────────────────────────────────────"
         echo -n " │ "
         set_color -o yellow
-        echo "SYNAPTIC PROPOSAL:"
+        echo "Proposed Command:"
         set_color normal
         echo " │   " (set_color -o white)"$suggested_cmd"
         set_color -o 00ffaf
