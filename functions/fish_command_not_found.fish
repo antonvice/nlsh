@@ -12,6 +12,14 @@ function fish_command_not_found --on-event fish_command_not_found
         return
     end
 
+    # Cool orbital scanning animation
+    echo -ne " 🛰️  [Orbital Link Active] Scanning..."
+    
+    # Quick flash animation (simulated)
+    # We don't want to block too long, just a split second
+    sleep 0.1
+    echo -ne "\r\033[K"
+
     if test $is_force_ai -eq 1
         set_color -o purple
         echo " 🌌 NLSH-Pro | Force-AI Mode Engaged"
@@ -24,12 +32,22 @@ function fish_command_not_found --on-event fish_command_not_found
 
     set -l suggested_cmd (~/.local/bin/nlsh-pro "$argv")
     if test -n "$suggested_cmd"; and not string match -q "API Error*" "$suggested_cmd"
-        set_color -o green
-        echo " ✨ AI suggests: $suggested_cmd"
+        # Premium suggestion box
+        set_color -o 00ffaf
+        echo " ╭────────────────────────────────────────────────────────────────────────────"
+        echo -n " │ "
+        set_color -o yellow
+        echo "SYNAPTIC PROPOSAL:"
         set_color normal
+        echo " │   " (set_color -o white)"$suggested_cmd"
+        set_color -o 00ffaf
+        echo " ╰────────────────────────────────────────────────────────────────────────────"
+        set_color normal
+        
         echo " Press [Enter] to execute, or any other key to abort..."
         
-        read -l -n 1 confirm
+        # Read with a hidden prompt to avoid "read>" clutter
+        read -l -n 1 -P "" confirm
         if test -z "$confirm"
             eval "$suggested_cmd"
         else

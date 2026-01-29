@@ -1,6 +1,6 @@
 # NLSH-Pro (Natural Language Shell Pro)
 
-**The Ultimate Neural Link for Your Terminal.**
+**The Ultimate VibeRot for Your Terminal.**
 
 > "Vibecoding brainrotted my brain, I cant even remember how to run simple cli commands anymore. halp!" — Anton Vice
 
@@ -8,69 +8,50 @@
 
 ---
 
-## ⚡ Why is this "The Ultimate"?
+## ✨ Features
 
-I (Anton Vice) analyzed the best natural language shell tools out there and synthesized their strengths into one zero-friction binary:
+- **🚀 Zero-Friction Interception**: Automatically catches typos and "command not found" errors.
+- **🧠 Dual-Engine Support**: Seamlessly switches between **Gemini Pro** (Cloud) and **Ollama** (Local/Privacy-Focused).
+- **🌍 Context Awareness**: 
+  - **Dynamic Tool Detection**: Automatically detects installed tools (like `exa`, `bat`, `rg`) and avoids suggesting missing ones.
+  - **Project Context**: Reads `.nlsh-context` in your current directory.
+  - **Global Context**: Reads `~/.config/nlsh/context.md` for user-wide preferences.
+- **⚡ Force Mode**: Type `!task` to bypass detection and force AI reasoning (e.g., `!explain this folder`).
+- **🛡️ Safety First**: Doesn't auto-execute dangerous commands; always asks for confirmation.
 
-1.  **Zero-Friction Interception**:
-    *   **Command Not Found?** Automatically intercepted. The AI fixes your typo or generates the command you meant to type.
-    *   **Intention Mode**: Type `!list all large files` to force the AI to take over instantly.
-    *   **Neural Link**: Press **Alt+L** (Option+L) to transform your current buffer into a shell command.
+## � Installation
 
-2.  **Dual-Engine Core**:
-    *   **Cloud Power**: Supports Google Gemini 2.0 Flash for reasoning.
-    *   **Local Privacy**: Automatically falls back to **Ollama (qwen2.5-coder)** if no API key is present. It works offline, right out of the box.
-
-3.  **Context-Aware Intelligence**:
-    *   **System Sensing**: Automatically detects your OS, Distro, Shell, and Root status.
-    *   **Project Context**: Drop a `.nlsh-context` file in any directory to teach the AI about your specific repo rules.
-
-4.  **Premium Experience**:
-    *   Cyberpunk-inspired "Orbital Link" UI.
-    *   Non-blocking scan animations.
-    *   Smart path validation (no more errors on directories).
-
----
-
-## 🛠 Installation
-
-### Prerequisites
-- **Go** (for building the binary)
-- **Fish Shell** (the superior shell)
-
-### One-Step Install
-Run the installer to build the binary and register the Fish plugins:
+### Automatic Install (Recommended)
 
 ```bash
-chmod +x install-pro.sh
+git clone https://github.com/antonvice/nlsh-pro
+cd nlsh-pro
 ./install-pro.sh
 ```
 
-Restart your shell: `source ~/.config/fish/config.fish`
+Restart your shell: `exec fish`
 
----
+### Manual Install (Go)
 
-## 🎮 Usage Guide
-
-### 1. The "Oops" Workflow (Automatic)
-Just type what you think works. If it's not a command, NLSH-Pro catches it.
-```fish
-$ list all py files sorted by size
-⚡ Command 'list' not found. Routing to NLSH-Pro...
-✨ AI suggests: fd -e py -x stat -f "%z %N" | sort -n
+```bash
+go install github.com/antonvice/nlsh-pro@latest
 ```
 
-### 2. The "Force" Workflow (Explicit)
-Prefix any sentence with `!` to skip command detection.
-```fish
-$ !find headers in src but exclude test files
-🌌 NLSH-Pro | Force-AI Mode Engaged
-✨ AI suggests: rg "header" src -g "!*test*"
-```
+## 🎮 Usage
 
-### 3. The "Link" Workflow (Interactive)
-Type `check status`, realize you don't know the git command, and press **Alt+L**.
-The text is instantly replaced by `git status -sb`.
+1. **Automatic Fix**: Just type a command. If it fails, NLSH-Pro intervenes.
+   ```bash
+   > record data
+   (Command not found) -> ✨ AI suggests: ffmpeg -f avfoundation -i "1" out.mov
+   ```
+2. **Force AI**: Prefix with `!`
+   ```bash
+   > !how do I find large files?
+   ```
+3. **Check Status**:
+   ```bash
+   > nlsh-pro status
+   ```
 
 ---
 
@@ -101,4 +82,4 @@ Your config lives at `~/.config/nlsh/config.json`.
 Run `nlsh-pro status` to see your Neural Link diagnostics (Connectivity, active model, and local context).
 
 Developed by **Anton Vice**.
-*Maximum Coolness Achieved.*
+*Maximum VibeRot Achieved.*

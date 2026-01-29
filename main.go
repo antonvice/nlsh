@@ -166,7 +166,27 @@ func getSystemInfo() string {
 	isRoot := os.Getuid() == 0
 	shell := os.Getenv("SHELL")
 
-	return fmt.Sprintf("OS: %s, Distro: %s, Shell: %s, IsRoot: %t", osName, distro, shell, isRoot)
+	return fmt.Sprintf("OS: %s, Distro: %s, Shell: %s, IsRoot: %t, Tools: %s", osName, distro, shell, isRoot, getAvailableTools())
+}
+
+func getToolsStatus() ([]string, []string) {
+	tools := []string{"exa", "eza", "bat", "rg", "fd", "fzf", "zoxide", "nvim", "code", "git"}
+	var found []string
+	var missing []string
+	
+	for _, tool := range tools {
+		if _, err := exec.LookPath(tool); err == nil {
+			found = append(found, tool)
+		} else {
+			missing = append(missing, tool)
+		}
+	}
+	return found, missing
+}
+
+func getAvailableTools() string {
+	found, missing := getToolsStatus()
+	return fmt.Sprintf("Installed[%s] Missing[%s]", strings.Join(found, ", "), strings.Join(missing, ", "))
 }
 
 func isLikelyCommand(text string) bool {
@@ -175,16 +195,30 @@ func isLikelyCommand(text string) bool {
 		return false
 	}
 	firstWord := fields[0]
-	// Check if first word is a common shell command or executable in path
+
+	// 1. Check if it's an executable path (absolute or relative)
+	if strings.Contains(firstWord, "/") {
+		if info, err := os.Stat(firstWord); err == nil {
+			// It exists, check if it's executable
+			if info.Mode()&0111 != 0 && !info.IsDir() {
+				return true
+			}
+		}
+		return false
+	}
+
+	// 2. Check path for bare commands
 	_, err := exec.LookPath(firstWord)
 	if err == nil {
 		return true
 	}
 	
-	// Check for common shell builtins or aliases that might not be in PATH
+	// 3. Check for common shell builtins
 	builtins := map[string]bool{
 		"cd": true, "ls": true, "git": true, "docker": true, "npm": true, 
-		"node": true, "python": true, "pip": true, "brew": true,
+		"node": true, "python": true, "pip": true, "brew": true, "rm": true,
+		"cp": true, "mv": true, "mkdir": true, "touch": true, "cat": true,
+		"echo": true, "exit": true, "source": true,
 	}
 	return builtins[strings.ToLower(firstWord)]
 }
@@ -229,52 +263,91 @@ func main() {
 		localContext = "\nLocal Project Context:\n" + string(data)
 	}
 
-	prompt := fmt.Sprintf(`Convert this user request into a shell command.
-Rules:
-1. Output ONLY the command. No markdown. No backticks. No comments.
-2. Target: macOS / fish shell.
-3. System Environment: %s
-4. Use context: %s%s%s
-5. Project rules:
-- %s
-
-User typed: %s
-
-Note: If the user input is ALREADY a valid command, you may either return it as is or optimize it (e.g., using 'rg' instead of 'grep') if it aligns with the project rules.`, sysInfo, globalContext, localContext, rules, query)
-
-	var command string
-	if config.Engine == "ollama" {
-		command, err = askOllama(config, prompt)
-	} else {
-		if config.Gemini.APIKey == "" {
-			// Fallback to Ollama if Gemini key is missing
-			fmt.Fprintf(os.Stderr, "⚠️  GEMINI_API_KEY not found. Attempting local link via Ollama...\n")
-			config.Engine = "ollama"
-			if config.Ollama.Model == "llama3" || config.Ollama.Model == "" {
-				config.Ollama.Model = "qwen2.5-coder:7b"
-			}
-			command, err = askOllama(config, prompt)
-		} else {
-			command, err = askGemini(config, prompt)
-		}
-	}
-
+	// Parse available tools for validation
+	available, missing := getToolsStatus()
+	
+	// First attempt
+	prompt := generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, "")
+	command, err := getResponse(config, prompt)
 	if err != nil {
 		fmt.Printf("API Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	command = strings.TrimSpace(command)
-	// Clean up potential markdown formatting
-	command = strings.TrimPrefix(command, "```bash")
-	command = strings.TrimPrefix(command, "```fish")
-	command = strings.TrimPrefix(command, "```")
-	command = strings.TrimSuffix(command, "```")
-	command = strings.TrimSpace(command)
-
-	command = strings.TrimSpace(command)
+	
+	// Validation Loop (Max 1 retry to avoid latency)
+	command = cleanCommand(command)
+	fields := strings.Fields(command)
+	if len(fields) > 0 {
+		firstWord := fields[0]
+		
+		// Check if suggested tool is missing
+		isMissing := false
+		for _, m := range missing {
+			if m == firstWord {
+				isMissing = true
+				break
+			}
+		}
+		
+		if isMissing {
+			// Retry with explicit error
+			retryMsg := fmt.Sprintf("CRITICAL ERROR: The tool '%s' is NOT installed on this system. You MUST use a standard alternative like 'ls', 'cd', 'find', or 'grep'. Do NOT suggest '%s'.", firstWord, firstWord)
+			prompt = generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, retryMsg)
+			command, err = getResponse(config, prompt)
+			if err == nil {
+				command = cleanCommand(command)
+			}
+		}
+	}
 
 	fmt.Println(command)
+}
+
+func getResponse(config *Config, prompt string) (string, error) {
+	if config.Engine == "ollama" {
+		return askOllama(config, prompt)
+	}
+	
+	if config.Gemini.APIKey == "" {
+		fmt.Fprintf(os.Stderr, "⚠️  GEMINI_API_KEY not found. Attempting local link via Ollama...\n")
+		config.Engine = "ollama"
+		if config.Ollama.Model == "" || config.Ollama.Model == "llama3" {
+			config.Ollama.Model = "qwen2.5-coder:7b"
+		}
+		return askOllama(config, prompt)
+	}
+	
+	return askGemini(config, prompt)
+}
+
+func generatePrompt(sysInfo, cwd, global, local, rules, query string, available, missing []string, extraInstructions string) string {
+	toolsStr := fmt.Sprintf("Installed[%s] Missing[%s]", strings.Join(available, ", "), strings.Join(missing, ", "))
+	
+	return fmt.Sprintf(`Convert this user request into a shell command.
+Rules:
+1. Output ONLY the command. No markdown. No backticks. No comments.
+2. Target: macOS / fish shell.
+3. System Info: %s
+4. Tools Status: %s
+5. Context: %s%s%s
+6. CRITICAL RULES:
+- DO NOT use tools listed in "Missing".
+- IF a requested tool is missing, substitute it with an available alternative (e.g. use 'ls' if 'exa' is missing).
+- %s
+- %s
+
+User typed: %s
+
+Note: If the user input is ALREADY a valid command, return it as is.`, sysInfo, toolsStr, cwd, global, local, rules, extraInstructions, query)
+}
+
+func cleanCommand(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	cmd = strings.TrimPrefix(cmd, "```bash")
+	cmd = strings.TrimPrefix(cmd, "```fish")
+	cmd = strings.TrimPrefix(cmd, "```")
+	cmd = strings.TrimSuffix(cmd, "```")
+	return strings.TrimSpace(cmd)
 }
 
 func showStatus() {
@@ -319,5 +392,5 @@ func showStatus() {
 	fmt.Printf(" 🌍 Global Context: %s\n", globalContextFound)
 	fmt.Printf(" 📂 Local Context:  %s\n", localContextFound)
 	fmt.Println("\033[38;5;238m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m")
-	fmt.Println(" \033[3m\"Ready to interface.\"\033[0m\n")
+	fmt.Println(" \033[3m\"Ready to interface.\"\033[0m")
 }

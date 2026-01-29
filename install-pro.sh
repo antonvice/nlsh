@@ -1,10 +1,12 @@
 #!/bin/bash
 set -e
+export PATH=$PATH:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin
 
 echo "🚀 Installing NLSH-Pro (The Ultimate NLSH)..."
 
 # Build Go tool
 GO_BIN=$(command -v go || echo "/usr/local/go/bin/go")
+FISH_BIN=$(command -v fish || echo "/opt/homebrew/bin/fish")
 
 if [ -f "$GO_BIN" ]; then
     "$GO_BIN" build -o nlsh-pro main.go
@@ -21,22 +23,12 @@ FISH_CONF_DIR="$HOME/.config/fish/functions"
 mkdir -p "$FISH_CONF_DIR"
 
 # Copy functions
-cp functions/__nlsh_pro_invoke.fish "$FISH_CONF_DIR/"
+# cp functions/__nlsh_pro_invoke.fish "$FISH_CONF_DIR/"
 cp functions/fish_command_not_found.fish "$FISH_CONF_DIR/"
 echo "✅ Fish functions installed to $FISH_CONF_DIR"
 
 # Add binding to fish config if not present
-BIND_CONFIG="
-# NLSH-Pro Bindings
-if status is-interactive
-    bind \el __nlsh_pro_invoke
-    bind \e\r __nlsh_pro_invoke
-end"
-
-if ! grep -q "__nlsh_pro_invoke" ~/.config/fish/config.fish 2>/dev/null; then
-    echo "$BIND_CONFIG" >> ~/.config/fish/config.fish
-    echo "✅ Fish bindings added to ~/.config/fish/config.fish"
-fi
+# (Removed explicit binding request as user prefers interception/bang only)
 
 # Ensure ~/.local/bin is in path
 if ! fish -c "contains $HOME/.local/bin \$fish_user_paths" 2>/dev/null; then
