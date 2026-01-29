@@ -1,0 +1,12 @@
+This is the specific context for the NLSH project.
+
+Key Files:
+- main.go: The core Go logic for the interceptor.
+- install-pro.sh: The installer script.
+- functions/*.fish: The Fish shell integration scripts.
+
+Project Rules:
+- We are building "The Ultimate NLSH Tool".
+- It must be "cool" and "premium".
+- We support both Gemini and Ollama.
+- Always check if the user is root before suggesting system modification commands.
