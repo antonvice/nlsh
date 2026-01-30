@@ -189,6 +189,15 @@ func getAvailableTools() string {
 	return fmt.Sprintf("Installed[%s] Missing[%s]", strings.Join(found, ", "), strings.Join(missing, ", "))
 }
 
+func getFishAliases() string {
+	cmd := exec.Command("fish", "-c", "alias")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
 func isLikelyCommand(text string) bool {
 	fields := strings.Fields(text)
 	if len(fields) == 0 {
@@ -265,9 +274,10 @@ func main() {
 
 	// Parse available tools for validation
 	available, missing := getToolsStatus()
+	aliases := getFishAliases()
 	
 	// First attempt
-	prompt := generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, "")
+	prompt := generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, aliases, "")
 	command, err := getResponse(config, prompt)
 	if err != nil {
 		fmt.Printf("API Error: %v\n", err)
@@ -292,7 +302,7 @@ func main() {
 		if isMissing {
 			// Retry with explicit error
 			retryMsg := fmt.Sprintf("CRITICAL ERROR: The tool '%s' is NOT installed on this system. You MUST use a standard alternative like 'ls', 'cd', 'find', or 'grep'. Do NOT suggest '%s'.", firstWord, firstWord)
-			prompt = generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, retryMsg)
+			prompt = generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, aliases, retryMsg)
 			command, err = getResponse(config, prompt)
 			if err == nil {
 				command = cleanCommand(command)
@@ -320,7 +330,7 @@ func getResponse(config *Config, prompt string) (string, error) {
 	return askGemini(config, prompt)
 }
 
-func generatePrompt(sysInfo, cwd, global, local, rules, query string, available, missing []string, extraInstructions string) string {
+func generatePrompt(sysInfo, cwd, global, local, rules, query string, available, missing []string, aliases, extraInstructions string) string {
 	toolsStr := fmt.Sprintf("Installed[%s] Missing[%s]", strings.Join(available, ", "), strings.Join(missing, ", "))
 	
 	return fmt.Sprintf(`Convert this user request into a shell command.
@@ -329,16 +339,19 @@ Rules:
 2. Target: macOS / fish shell.
 3. System Info: %s
 4. Tools Status: %s
-5. Context: %s%s%s
-6. CRITICAL RULES:
+5. Valid User Aliases:
+%s
+6. Context: %s%s%s
+7. CRITICAL RULES:
 - DO NOT use tools listed in "Missing".
 - IF a requested tool is missing, substitute it with an available alternative (e.g. use 'ls' if 'exa' is missing).
+- CONSIDER using a user's alias if one matches the intent.
 - %s
 - %s
 
 User typed: %s
 
-Note: If the user input is ALREADY a valid command, return it as is.`, sysInfo, toolsStr, cwd, global, local, rules, extraInstructions, query)
+Note: If the user input is ALREADY a valid command, return it as is.`, sysInfo, toolsStr, aliases, cwd, global, local, rules, extraInstructions, query)
 }
 
 func cleanCommand(cmd string) string {

@@ -40,15 +40,20 @@ go install github.com/antonvice/nlsh-pro@latest
 ## 🎮 Usage
 
 1. **Automatic Fix**: Just type a command. If it fails, NLSH-Pro intervenes.
+
    ```bash
    > record data
    (Command not found) -> ✨ AI suggests: ffmpeg -f avfoundation -i "1" out.mov
    ```
+
 2. **Force AI**: Prefix with `!`
+
    ```bash
    > !how do I find large files?
    ```
+
 3. **Check Status**:
+
    ```bash
    > nlsh-pro status
    ```
@@ -60,7 +65,7 @@ go install github.com/antonvice/nlsh-pro@latest
 - **Config File**: `~/.config/nlsh/config.json`
 - **Global Context**: `~/.config/nlsh/context.md` (Add your preferences here, e.g., "Always use git status -sb")
 - **Project Context**: `.nlsh-context` in any directory.
-- **Environment**: 
+- **Environment**:
   - `GEMINI_API_KEY`: Set your key here (or via config).
   - `NLSH_ENGINE`: Force `gemini` or `ollama`.
 
