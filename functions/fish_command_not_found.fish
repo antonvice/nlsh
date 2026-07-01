@@ -22,8 +22,10 @@ function fish_command_not_found --on-event fish_command_not_found
 
     if test $is_force_ai -eq 1
         set_color -o purple
-        echo " 🌌 NLSH-Pro | Force-AI Mode Engaged"
+        echo " 🌌 NLSH-Pro | Agent Mode Engaged"
         set_color normal
+        ~/.local/bin/nlsh-pro --agent "$argv"
+        return
     else
         set_color -o yellow
         echo " ⚡ Command '$cmd' not found. Routing to NLSH-Pro..."

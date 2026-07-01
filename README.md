@@ -11,15 +11,19 @@
 ## ✨ Features
 
 - **🚀 Zero-Friction Interception**: Automatically catches typos and "command not found" errors.
-- **🧠 Dual-Engine Support**: Seamlessly switches between **Gemini Pro** (Cloud) and **Ollama** (Local/Privacy-Focused).
-- **🌍 Context Awareness**: 
-  - **Dynamic Tool Detection**: Automatically detects installed tools (like `exa`, `bat`, `rg`) and avoids suggesting missing ones.
+- **🧠 Managed MLX-LM Runtime**: Starts `mlx_lm.server` through `uv tool run --from mlx-lm` on `http://127.0.0.1:8765` and keeps the model warm between requests.
+- **🕹️ Agent Mode**: Type `!task` to enter an interactive HUD with request history, tool calls, results, and follow-up prompts.
+- **🧭 Model HUD**: Run `nlsh-pro models` to list OpenAI-compatible MLX server models, show Ollama models for comparison, and choose the active MLX model.
+- **🧰 Native Agent Tools**: Includes media/project/file inspectors, background task launch, clipboard copy, markdown report output, and per-directory session memory.
+- **🧯 Repair Loop**: Records stdout/stderr/duration for each tool call and retries common command failures once.
+- **🌊 Streaming Output**: Reads server-sent events from the local model runtime and streams tokens while preserving safe Fish capture.
+- **🌍 Context Awareness**:
+  - **Dynamic Tool Detection**: Scans your PATH plus Fish aliases/functions so it can suggest real tools like `rg`, `cat`, `bat`, `fd`, `git`, and your own shell helpers.
   - **Project Context**: Reads `.nlsh-context` in your current directory.
   - **Global Context**: Reads `~/.config/nlsh/context.md` for user-wide preferences.
-- **⚡ Force Mode**: Type `!task` to bypass detection and force AI reasoning (e.g., `!explain this folder`).
-- **🛡️ Safety First**: Doesn't auto-execute dangerous commands; always asks for confirmation.
+- **🛡️ Safety First**: Agent mode defaults to read-only tools and records what it ran.
 
-## � Installation
+## Installation
 
 ### Automatic Install (Recommended)
 
@@ -49,10 +53,16 @@ go install github.com/antonvice/nlsh-pro@latest
 2. **Force AI**: Prefix with `!`
 
    ```bash
-   > !how do I find large files?
+   > !find all mp4 videos in here
    ```
 
-3. **Check Status**:
+3. **Choose a model**:
+
+   ```bash
+   > nlsh-pro models
+   ```
+
+4. **Check Status**:
 
    ```bash
    > nlsh-pro status
@@ -66,8 +76,32 @@ go install github.com/antonvice/nlsh-pro@latest
 - **Global Context**: `~/.config/nlsh/context.md` (Add your preferences here, e.g., "Always use git status -sb")
 - **Project Context**: `.nlsh-context` in any directory.
 - **Environment**:
-  - `GEMINI_API_KEY`: Set your key here (or via config).
-  - `NLSH_ENGINE`: Force `gemini` or `ollama`.
+  - `NLSH_ENGINE`: Force `mlx`, `gemini`, or `ollama`.
+  - `NLSH_MLX_MODEL`: Override the MLX model.
+  - `GEMINI_API_KEY`: Set your key here only if using the Gemini engine.
+
+Default model runtime:
+
+```json
+{
+  "mlx": {
+    "model": "sahilchachra/ornith-1.0-9b-mxfp4-mlx",
+    "server": {
+      "url": "http://127.0.0.1:8765",
+      "command": ["uv", "tool", "run", "--from", "mlx-lm", "mlx_lm.server"],
+      "auto_start": true,
+      "external_app": false,
+      "stream": true
+    }
+  },
+  "agent": {
+    "profile": "read-only",
+    "fast_model": "sahilchachra/ornith-1.0-9b-mxfp4-mlx",
+    "smart_model": "sahilchachra/ornith-1.0-9b-mxfp4-mlx",
+    "repair_retries": 1
+  }
+}
+```
 
 ## 🧙 Cool Factor & Status
 
