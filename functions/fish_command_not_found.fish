@@ -22,17 +22,27 @@ function fish_command_not_found --on-event fish_command_not_found
 
     if test $is_force_ai -eq 1
         set_color -o purple
-        echo " 🌌 NLSH-Pro | Agent Mode Engaged"
+        echo " 🌌 NLSHP | Agent Mode Engaged"
         set_color normal
-        ~/.local/bin/nlsh-pro --agent "$argv"
+        set -l nlsh_cmd (command -sq nlshp; and command -v nlshp; or command -v nlsh-pro)
+        if test -z "$nlsh_cmd"
+            __fish_default_command_not_found_handler $argv
+            return
+        end
+        $nlsh_cmd --agent "$argv"
         return
     else
         set_color -o yellow
-        echo " ⚡ Command '$cmd' not found. Routing to NLSH-Pro..."
+        echo " ⚡ Command '$cmd' not found. Routing to NLSHP..."
         set_color normal
     end
 
-    set -l suggested_cmd (~/.local/bin/nlsh-pro "$argv")
+    set -l nlsh_cmd (command -sq nlshp; and command -v nlshp; or command -v nlsh-pro)
+    if test -z "$nlsh_cmd"
+        __fish_default_command_not_found_handler $argv
+        return
+    end
+    set -l suggested_cmd ($nlsh_cmd "$argv")
     if test -n "$suggested_cmd"; and not string match -q "API Error*" "$suggested_cmd"
         # Premium suggestion box
         set_color -o 00ffaf

@@ -156,3 +156,44 @@ func TestValidateAgentCommandProfiles(t *testing.T) {
 		t.Fatalf("pipe should be refused in read-only mode")
 	}
 }
+
+func TestParseAliasName(t *testing.T) {
+	tests := map[string]string{
+		"alias gs='git status'": "gs",
+		"alias ll \"ls -la\"":   "ll",
+		"alias g=git":           "g",
+	}
+	for input, want := range tests {
+		if got := parseAliasName(input); got != want {
+			t.Fatalf("parseAliasName(%q) = %q; want %q", input, got, want)
+		}
+	}
+}
+
+func TestParsePOSIXFunctionName(t *testing.T) {
+	tests := map[string]string{
+		"mkcd() { mkdir -p \"$1\" && cd \"$1\"; }": "mkcd",
+		"function deploy { echo deploy; }":         "deploy",
+		"echo nope":                                "",
+	}
+	for input, want := range tests {
+		if got := parsePOSIXFunctionName(input); got != want {
+			t.Fatalf("parsePOSIXFunctionName(%q) = %q; want %q", input, got, want)
+		}
+	}
+}
+
+func TestNormalizeShellName(t *testing.T) {
+	tests := map[string]string{
+		"/opt/homebrew/bin/fish": "fish",
+		"/bin/zsh":               "zsh",
+		"bash":                   "bash",
+		"sh":                     "bash",
+		"":                       "fish",
+	}
+	for input, want := range tests {
+		if got := normalizeShellName(input); got != want {
+			t.Fatalf("normalizeShellName(%q) = %q; want %q", input, got, want)
+		}
+	}
+}

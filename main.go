@@ -60,6 +60,9 @@ type Config struct {
 		Background    bool   `json:"background_tasks"`
 		RepairRetries int    `json:"repair_retries"`
 	} `json:"agent"`
+	Shell struct {
+		Preferred string `json:"preferred"`
+	} `json:"shell"`
 	Rules []string `json:"rules"`
 }
 
@@ -76,7 +79,6 @@ func loadConfig() (*Config, error) {
 			"For content search, use `rg PATTERN PATH`.",
 			"For finding files by extension, use `fd -e EXT -t f`.",
 			"For file viewing, use `cat FILE` or `bat FILE`.",
-			"Use fish shell syntax (e.g. for loops).",
 			"When running commands on files (like bat/cat/grep), ALWAYS ensure you filter for files only (e.g. fd --type f).",
 			"Assume macOS environment.",
 		},
@@ -106,6 +108,7 @@ func loadConfig() (*Config, error) {
 	config.Agent.Reports = true
 	config.Agent.Background = true
 	config.Agent.RepairRetries = 1
+	config.Shell.Preferred = "fish"
 
 	// Try to read existing config
 	if data, err := os.ReadFile(configPath); err == nil {
@@ -138,6 +141,9 @@ func loadConfig() (*Config, error) {
 	}
 	if model := os.Getenv("NLSH_MLX_SMART_MODEL"); model != "" {
 		config.Agent.SmartModel = model
+	}
+	if shell := os.Getenv("NLSH_SHELL"); shell != "" {
+		config.Shell.Preferred = shell
 	}
 	normalizeMLXConfig(config, home)
 
@@ -226,6 +232,7 @@ func normalizeMLXConfig(config *Config, home string) {
 	if config.Agent.RepairRetries == 0 {
 		config.Agent.RepairRetries = 1
 	}
+	config.Shell.Preferred = normalizeShellName(config.Shell.Preferred)
 }
 
 func askMLX(config *Config, prompt string) (string, error) {
@@ -241,7 +248,7 @@ func askMLX(config *Config, prompt string) (string, error) {
 		return askMLXServer(config, prompt)
 	}
 
-	systemPrompt := "You convert natural-language terminal intent into exactly one fish shell command. Output only the command. No markdown, no prose, no explanations."
+	systemPrompt := fmt.Sprintf("You convert natural-language terminal intent into exactly one %s shell command. Output only the command. No markdown, no prose, no explanations.", activeShell(config))
 	args := append([]string{}, config.MLX.Command[1:]...)
 	args = append(args,
 		"--model", config.MLX.Model,
@@ -415,7 +422,7 @@ func mlxServerReady(config *Config) bool {
 }
 
 func askMLXServer(config *Config, prompt string) (string, error) {
-	system := "You convert natural-language terminal intent into exactly one fish shell command. Output only the command. No markdown, no prose, no explanations."
+	system := fmt.Sprintf("You convert natural-language terminal intent into exactly one %s shell command. Output only the command. No markdown, no prose, no explanations.", activeShell(config))
 	return askMLXChat(config, system, prompt, config.MLX.Server.Stream)
 }
 
@@ -638,6 +645,7 @@ type ToolInventory struct {
 	Missing   []string
 	Aliases   []string
 	Functions []string
+	Shell     string
 }
 
 func getToolsStatus() ([]string, []string) {
@@ -667,15 +675,16 @@ func getToolInventory() ToolInventory {
 	for _, tool := range scanPathExecutables() {
 		availableSet[tool] = true
 	}
-	for _, builtin := range shellBuiltins() {
+	shell := activeShell(nil)
+	for _, builtin := range shellBuiltins(shell) {
 		availableSet[builtin] = true
 	}
 
-	aliases := getFishAliasNames()
+	aliases := getShellAliasNames(shell)
 	for _, alias := range aliases {
 		availableSet[alias] = true
 	}
-	functions := getFishFunctionNames()
+	functions := getShellFunctionNames(shell)
 	for _, fn := range functions {
 		availableSet[fn] = true
 	}
@@ -686,7 +695,7 @@ func getToolInventory() ToolInventory {
 	}
 	sort.Strings(available)
 	sort.Strings(missing)
-	return ToolInventory{Available: available, Missing: missing, Aliases: aliases, Functions: functions}
+	return ToolInventory{Available: available, Missing: missing, Aliases: aliases, Functions: functions, Shell: shell}
 }
 
 func scanPathExecutables() []string {
@@ -717,13 +726,26 @@ func scanPathExecutables() []string {
 	return tools
 }
 
-func shellBuiltins() []string {
-	return []string{
-		"and", "begin", "break", "builtin", "case", "cd", "command", "continue",
-		"else", "end", "eval", "exec", "exit", "for", "function", "if", "not",
-		"or", "read", "return", "set", "source", "status", "string", "switch",
-		"test", "time", "while", "echo", "pwd", "true", "false",
+func shellBuiltins(shell string) []string {
+	common := []string{
+		"alias", "bg", "break", "cd", "command", "continue", "dirs", "echo",
+		"eval", "exec", "exit", "export", "false", "fg", "hash", "help",
+		"jobs", "popd", "printf", "pushd", "pwd", "read", "return", "set",
+		"shift", "source", "test", "time", "trap", "true", "type", "ulimit",
+		"umask", "unalias", "unset", "wait",
 	}
+	if shell == "fish" {
+		return []string{
+			"and", "begin", "break", "builtin", "case", "cd", "command", "continue",
+			"else", "end", "eval", "exec", "exit", "for", "function", "if", "not",
+			"or", "read", "return", "set", "source", "status", "string", "switch",
+			"test", "time", "while", "echo", "pwd", "true", "false",
+		}
+	}
+	if shell == "zsh" {
+		return append(common, "autoload", "bindkey", "disable", "enable", "fc", "print", "setopt", "unsetopt", "whence")
+	}
+	return common
 }
 
 func getAvailableTools() string {
@@ -736,16 +758,16 @@ func getAvailableTools() string {
 	)
 }
 
-func getFishAliases() string {
-	aliases, _ := parseFishConfigSymbols()
+func getShellAliases(shell string) string {
+	aliases, _ := parseShellConfigSymbols(shell)
 	return strings.Join(aliases, "\n")
 }
 
-func getFishAliasNames() []string {
-	aliases, _ := parseFishConfigSymbols()
+func getShellAliasNames(shell string) []string {
+	aliases, _ := parseShellConfigSymbols(shell)
 	names := make([]string, 0, len(aliases))
 	for _, alias := range aliases {
-		name := parseFishAliasName(alias)
+		name := parseAliasName(alias)
 		if name != "" {
 			names = append(names, name)
 		}
@@ -754,11 +776,11 @@ func getFishAliasNames() []string {
 	return names
 }
 
-func getFishFunctionNames() []string {
-	_, functions := parseFishConfigSymbols()
+func getShellFunctionNames(shell string) []string {
+	_, functions := parseShellConfigSymbols(shell)
 	filtered := make([]string, 0, len(functions))
 	for _, name := range functions {
-		if strings.HasPrefix(name, "_") || strings.HasPrefix(name, "fish_") || strings.HasPrefix(name, "__fish") {
+		if strings.HasPrefix(name, "_") || strings.HasPrefix(name, "fish_") || strings.HasPrefix(name, "__fish") || strings.HasPrefix(name, "comp") {
 			continue
 		}
 		filtered = append(filtered, name)
@@ -770,18 +792,48 @@ func getFishFunctionNames() []string {
 	return filtered
 }
 
-func parseFishConfigSymbols() ([]string, []string) {
+func parseShellConfigSymbols(shell string) ([]string, []string) {
+	if shell == "fish" {
+		return parseConfigSymbols(shellConfigFiles("fish"), "fish")
+	}
+	if shell == "zsh" {
+		return parseConfigSymbols(shellConfigFiles("zsh"), "zsh")
+	}
+	return parseConfigSymbols(shellConfigFiles("bash"), "bash")
+}
+
+func shellConfigFiles(shell string) []string {
 	home, _ := os.UserHomeDir()
-	files := []string{filepath.Join(home, ".config", "fish", "config.fish")}
-	functionDir := filepath.Join(home, ".config", "fish", "functions")
-	if entries, err := os.ReadDir(functionDir); err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".fish") {
-				files = append(files, filepath.Join(functionDir, entry.Name()))
+	switch shell {
+	case "fish":
+		files := []string{filepath.Join(home, ".config", "fish", "config.fish")}
+		functionDir := filepath.Join(home, ".config", "fish", "functions")
+		if entries, err := os.ReadDir(functionDir); err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".fish") {
+					files = append(files, filepath.Join(functionDir, entry.Name()))
+				}
 			}
 		}
+		return files
+	case "zsh":
+		return []string{
+			filepath.Join(home, ".zshenv"),
+			filepath.Join(home, ".zprofile"),
+			filepath.Join(home, ".zshrc"),
+			filepath.Join(home, ".zlogin"),
+		}
+	default:
+		return []string{
+			filepath.Join(home, ".bash_profile"),
+			filepath.Join(home, ".bash_login"),
+			filepath.Join(home, ".bashrc"),
+			filepath.Join(home, ".profile"),
+		}
 	}
+}
 
+func parseConfigSymbols(files []string, shell string) ([]string, []string) {
 	aliasSet := map[string]bool{}
 	functionSet := map[string]bool{}
 	for _, file := range files {
@@ -799,13 +851,18 @@ func parseFishConfigSymbols() ([]string, []string) {
 				if strings.HasPrefix(part, "alias ") {
 					aliasSet[part] = true
 				}
-				if strings.HasPrefix(part, "function ") {
+				if shell == "fish" && strings.HasPrefix(part, "function ") {
 					fields := strings.Fields(part)
 					if len(fields) >= 2 {
-						name := cleanFishSymbolName(fields[1])
+						name := cleanShellSymbolName(fields[1])
 						if name != "" {
 							functionSet[name] = true
 						}
+					}
+				}
+				if shell != "fish" {
+					if name := parsePOSIXFunctionName(part); name != "" {
+						functionSet[name] = true
 					}
 				}
 			}
@@ -825,27 +882,103 @@ func parseFishConfigSymbols() ([]string, []string) {
 	return aliases, functions
 }
 
-func parseFishAliasName(aliasLine string) string {
+func parseAliasName(aliasLine string) string {
 	aliasLine = strings.TrimSpace(strings.TrimPrefix(aliasLine, "alias "))
 	if aliasLine == "" {
 		return ""
 	}
 	if idx := strings.Index(aliasLine, "="); idx > 0 {
-		return cleanFishSymbolName(aliasLine[:idx])
+		return cleanShellSymbolName(aliasLine[:idx])
 	}
 	fields := strings.Fields(aliasLine)
 	if len(fields) == 0 {
 		return ""
 	}
-	return cleanFishSymbolName(fields[0])
+	return cleanShellSymbolName(fields[0])
 }
 
-func cleanFishSymbolName(name string) string {
+func cleanShellSymbolName(name string) string {
 	name = strings.TrimSpace(name)
 	if idx := strings.Index(name, "("); idx > 0 {
 		name = name[:idx]
 	}
 	return strings.Trim(name, `"'`)
+}
+
+func parsePOSIXFunctionName(line string) string {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "function ") {
+		fields := strings.Fields(strings.TrimPrefix(line, "function "))
+		if len(fields) > 0 {
+			return cleanShellSymbolName(fields[0])
+		}
+	}
+	if idx := strings.Index(line, "()"); idx > 0 {
+		name := strings.TrimSpace(line[:idx])
+		if name != "" && !strings.ContainsAny(name, " \t") {
+			return cleanShellSymbolName(name)
+		}
+	}
+	return ""
+}
+
+func activeShell(config *Config) string {
+	if shell := os.Getenv("NLSH_SHELL"); shell != "" {
+		return normalizeShellName(shell)
+	}
+	if config != nil && config.Shell.Preferred != "" {
+		preferred := normalizeShellName(config.Shell.Preferred)
+		if preferred != "" && shellConfigAvailable(preferred) {
+			return preferred
+		}
+	}
+	if shellConfigAvailable("fish") {
+		return "fish"
+	}
+	if shell := os.Getenv("SHELL"); shell != "" {
+		return normalizeShellName(shell)
+	}
+	return "bash"
+}
+
+func normalizeShellName(shell string) string {
+	if strings.TrimSpace(shell) == "" {
+		return "fish"
+	}
+	shell = strings.ToLower(filepath.Base(strings.TrimSpace(shell)))
+	switch shell {
+	case "fish", "zsh", "bash":
+		return shell
+	case "sh":
+		return "bash"
+	default:
+		if shell == "" {
+			return "fish"
+		}
+		return shell
+	}
+}
+
+func shellConfigAvailable(shell string) bool {
+	for _, path := range shellConfigFiles(shell) {
+		if pathExists(path) {
+			return true
+		}
+	}
+	if _, err := exec.LookPath(shell); err == nil {
+		return true
+	}
+	return false
+}
+
+func existingShellConfigFiles(shell string) []string {
+	var files []string
+	for _, path := range shellConfigFiles(shell) {
+		if pathExists(path) {
+			files = append(files, path)
+		}
+	}
+	return files
 }
 
 func isLikelyCommand(text string) bool {
@@ -874,7 +1007,7 @@ func isLikelyCommand(text string) bool {
 
 	// 3. Check for common shell builtins
 	builtins := map[string]bool{}
-	for _, builtin := range shellBuiltins() {
+	for _, builtin := range shellBuiltins(activeShell(nil)) {
 		builtins[builtin] = true
 	}
 	return builtins[strings.ToLower(firstWord)]
@@ -889,6 +1022,11 @@ func main() {
 
 	if os.Args[1] == "status" {
 		showStatus()
+		os.Exit(0)
+	}
+
+	if os.Args[1] == "help" || os.Args[1] == "--help" || os.Args[1] == "-h" {
+		showHelp()
 		os.Exit(0)
 	}
 
@@ -997,11 +1135,12 @@ func main() {
 	// Parse available tools for validation
 	inventory := getToolInventory()
 	available, missing := inventory.Available, inventory.Missing
-	aliases := getFishAliases()
+	shell := activeShell(config)
+	aliases := getShellAliases(shell)
 	logf(config, "tools available=%d aliases=%d functions=%d missing_important=%d", len(inventory.Available), len(inventory.Aliases), len(inventory.Functions), len(inventory.Missing))
 
 	// First attempt
-	prompt := generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, aliases, "")
+	prompt := generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, aliases, activeShell(config), "")
 	command, err := getResponse(config, prompt)
 	if err != nil {
 		fmt.Printf("API Error: %v\n", err)
@@ -1021,7 +1160,7 @@ func main() {
 		if isMissing {
 			// Retry with explicit error
 			retryMsg := fmt.Sprintf("CRITICAL ERROR: The tool '%s' is NOT installed or known on this system. You MUST use one of the installed tools, shell builtins, functions, or aliases. Prefer rg/cat/bat/fd/git when suitable. Do NOT suggest '%s'.", firstWord, firstWord)
-			prompt = generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, aliases, retryMsg)
+			prompt = generatePrompt(sysInfo, cwd, globalContext, localContext, rules, query, available, missing, aliases, activeShell(config), retryMsg)
 			command, err = getResponse(config, prompt)
 			if err == nil {
 				command = cleanCommand(command)
@@ -1098,7 +1237,7 @@ type AgentTurn struct {
 
 func printAgentHeader(config *Config, cwd string, inventory ToolInventory, sessionPath string) {
 	fmt.Println()
-	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH-Pro Agent ") + color(cMagenta, strings.Repeat("─", 54)))
+	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSHP Agent ") + color(cMagenta, strings.Repeat("─", 58)))
 	hudLine("model ", color(cCyan, config.MLX.Model))
 	hudLine("route ", fmt.Sprintf("%s command  %s answer", color(cCyan, config.Agent.FastModel), color(cCyan, config.Agent.SmartModel)))
 	hudLine("cwd   ", color(cGreen, cwd))
@@ -1123,7 +1262,7 @@ func runAgentTurn(config *Config, query, cwd, globalContext, localContext, rules
 		return turn, err
 	}
 
-	commandPrompt := generateAgentCommandPrompt(getSystemInfo(), cwd, globalContext, localContext, rules, query, inventory.Available, inventory.Missing, getFishAliases(), history, config.Agent.Profile)
+	commandPrompt := generateAgentCommandPrompt(getSystemInfo(), cwd, globalContext, localContext, rules, query, inventory.Available, inventory.Missing, getShellAliases(inventory.Shell), history, config.Agent.Profile, inventory.Shell)
 	originalStream := config.MLX.Server.Stream
 	originalModel := config.MLX.Model
 	config.MLX.Server.Stream = false
@@ -1326,15 +1465,15 @@ func saveAgentSession(path string, history []AgentTurn) {
 	}
 }
 
-func generateAgentCommandPrompt(sysInfo, cwd, global, local, rules, query string, available, missing []string, aliases string, history []AgentTurn, profile string) string {
+func generateAgentCommandPrompt(sysInfo, cwd, global, local, rules, query string, available, missing []string, aliases string, history []AgentTurn, profile, shell string) string {
 	toolsStr := fmt.Sprintf("InstalledPriority[%s] TotalInstalled[%d] MissingImportant[%s]", strings.Join(prioritizedPromptTools(available), ", "), len(available), strings.Join(missing, ", "))
 	return fmt.Sprintf(`Choose exactly one SAFE READ-ONLY command to answer the user's request.
 Output ONLY the command. No markdown. No prose.
 
-Target: macOS / fish shell.
+Target: macOS / %s shell.
 System: %s
 Tools: %s
-Aliases:
+Aliases/functions from active shell config:
 %s
 Context: %s%s%s
 Safety profile: %s
@@ -1351,7 +1490,7 @@ Rules:
 Conversation history:
 %s
 
-User request: %s`, sysInfo, toolsStr, aliases, cwd, global, local, profile, rules, formatAgentHistory(history), query)
+User request: %s`, shell, sysInfo, toolsStr, aliases, cwd, global, local, profile, rules, formatAgentHistory(history), query)
 }
 
 func askMLXAgentAnswer(config *Config, prompt string) (string, error) {
@@ -1945,7 +2084,7 @@ func isKnownCommand(name string, inventory ToolInventory) bool {
 	if _, err := exec.LookPath(name); err == nil {
 		return true
 	}
-	for _, builtin := range shellBuiltins() {
+	for _, builtin := range shellBuiltins(activeShell(nil)) {
 		if name == builtin {
 			return true
 		}
@@ -1981,22 +2120,22 @@ func getResponse(config *Config, prompt string) (string, error) {
 	}
 }
 
-func generatePrompt(sysInfo, cwd, global, local, rules, query string, available, missing []string, aliases, extraInstructions string) string {
+func generatePrompt(sysInfo, cwd, global, local, rules, query string, available, missing []string, aliases, shell, extraInstructions string) string {
 	toolsStr := fmt.Sprintf("InstalledPriority[%s] TotalInstalled[%d] MissingImportant[%s]", strings.Join(prioritizedPromptTools(available), ", "), len(available), strings.Join(missing, ", "))
 
 	return fmt.Sprintf(`Convert this user request into a shell command.
 Rules:
 1. Output ONLY the command. No markdown. No backticks. No comments.
-2. Target: macOS / fish shell.
+2. Target: macOS / %s shell.
 3. System Info: %s
 4. Tools Status: %s
-5. Valid User Aliases:
+5. Valid User Aliases/Functions from active shell config:
 %s
 6. Context: %s%s%s
 7. CRITICAL RULES:
 - DO NOT use tools listed in "MissingImportant".
 - IF a requested tool is missing, substitute it with an available alternative (e.g. use 'rg' instead of grep when available, 'cat' or 'bat' for file viewing).
-- You MAY use any command listed in InstalledPriority, any shell builtin, and any listed fish alias/function.
+- You MAY use any command listed in InstalledPriority, any shell builtin, and any listed alias/function.
 - Use valid syntax for each tool: recursive file listing is rg --files or fd --type f, content search is rg PATTERN, and file display is cat FILE or bat FILE.
 - For finding files by extension such as mp4, mov, png, or pdf, prefer fd -e EXT -t f.
 - CONSIDER using a user's alias if one matches the intent.
@@ -2005,7 +2144,7 @@ Rules:
 
 User typed: %s
 
-Note: If the user input is ALREADY a valid command, return it as is.`, sysInfo, toolsStr, aliases, cwd, global, local, rules, extraInstructions, query)
+Note: If the user input is ALREADY a valid command, return it as is.`, shell, sysInfo, toolsStr, aliases, cwd, global, local, rules, extraInstructions, query)
 }
 
 func prioritizedPromptTools(available []string) []string {
@@ -2128,6 +2267,55 @@ func stripANSI(s string) string {
 	return b.String()
 }
 
+func commandName() string {
+	name := filepath.Base(os.Args[0])
+	if name == "" || name == "." {
+		return "nlshp"
+	}
+	if name == "nlsh-pro" {
+		return "nlshp"
+	}
+	return name
+}
+
+func showHelp() {
+	cmd := commandName()
+	fmt.Println()
+	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSHP Help ") + color(cMagenta, strings.Repeat("─", 60)))
+	hudLine("usage ", color(cCyan, cmd+" <command>")+color(cGray, "  or  !natural language in your shell"))
+	fmt.Println(color(cMagenta, " ├"+strings.Repeat("─", 72)))
+	helpRows := []struct {
+		Command string
+		Detail  string
+	}{
+		{"help", "show this command reference"},
+		{"status", "runtime/config/shell/context summary"},
+		{"dashboard | hud | home", "command-center HUD with runtime, profile, tools, memory"},
+		{"doctor", "health checks for binary, shell config, dependencies, sessions, MLX"},
+		{"models | model", "list/select OpenAI-compatible MLX models; compare Ollama"},
+		{"sessions | history", "recent per-directory agent memory"},
+		{"profile", "show safety profiles"},
+		{"profile read-only", "safe discovery tools only"},
+		{"profile confirm-write", "allow small file/app write actions"},
+		{"profile power", "wide local command access with guardrails"},
+		{"warm", "start the managed mlx-lm server now"},
+		{"logs | log", "tail the mlx-lm runtime log"},
+		{"forget", "delete this directory's saved agent memory"},
+		{"--agent \"task\"", "run an interactive agent session directly"},
+		{"<natural language>", "print a suggested shell command"},
+	}
+	for _, row := range helpRows {
+		hudLine(fmt.Sprintf("%-18s", row.Command), color(cGray, row.Detail))
+	}
+	fmt.Println(color(cMagenta, " ├"+strings.Repeat("─", 72)))
+	hudLine("examples", color(cCyan, cmd+" dashboard"))
+	hudLine("        ", color(cCyan, cmd+" doctor"))
+	hudLine("        ", color(cCyan, cmd+" profile confirm-write"))
+	hudLine("        ", color(cCyan, cmd+" --agent \"find all mp4 videos in here\""))
+	hudLine("shell  ", color(cGray, "set NLSH_SHELL=fish|zsh|bash or config shell.preferred"))
+	fmt.Println(color(cMagenta, " ╰"+strings.Repeat("─", 72)))
+}
+
 func showDashboard() error {
 	config, err := loadConfig()
 	if err != nil {
@@ -2139,16 +2327,18 @@ func showDashboard() error {
 	ready := mlxServerReady(config)
 
 	fmt.Println()
-	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH Command Center ") + color(cMagenta, strings.Repeat("─", 51)))
+	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSHP Command Center ") + color(cMagenta, strings.Repeat("─", 50)))
+	cmd := commandName()
 	hudLine("runtime", runtimeBadge(ready)+" "+color(cCyan, config.MLX.Server.URL))
 	hudLine("model  ", color(cCyan, config.MLX.Model))
 	hudLine("profile", profileBadge(config.Agent.Profile))
+	hudLine("shell  ", color(cCyan, activeShell(config)))
 	hudLine("cwd    ", color(cGreen, cwd))
 	hudLine("tools  ", fmt.Sprintf("%s available  %s aliases  %s functions", color(cCyan, fmt.Sprint(len(inventory.Available))), color(cCyan, fmt.Sprint(len(inventory.Aliases))), color(cCyan, fmt.Sprint(len(inventory.Functions)))))
 	fmt.Println(color(cMagenta, " ├"+strings.Repeat("─", 72)))
-	hudLine("quick  ", color(cGray, "nlsh-pro doctor  ·  nlsh-pro sessions  ·  nlsh-pro warm"))
+	hudLine("quick  ", color(cGray, cmd+" doctor  ·  "+cmd+" sessions  ·  "+cmd+" warm  ·  "+cmd+" help"))
 	hudLine("agent  ", color(cGray, "!ask anything  ·  copy that  ·  save report  ·  inspect project"))
-	hudLine("safety ", color(cGray, "nlsh-pro profile read-only|confirm-write|power"))
+	hudLine("safety ", color(cGray, cmd+" profile read-only|confirm-write|power"))
 	if len(sessions) > 0 {
 		fmt.Println(color(cMagenta, " ├"+strings.Repeat("─", 72)))
 		for i, session := range sessions {
@@ -2165,22 +2355,23 @@ func runDoctor() error {
 		return err
 	}
 	cwd, _ := os.Getwd()
+	inventory := getToolInventory()
+	shell := activeShell(config)
+	shellFiles := existingShellConfigFiles(shell)
+	binaryPath, _ := os.Executable()
 	checks := []DoctorCheck{
-		checkCommand("nlsh-pro", "/opt/homebrew/bin/nlsh-pro"),
-		checkCommand("uv", "uv"),
-		checkCommand("mlx-lm server", "uv"),
-		checkCommand("fd", "fd"),
-		checkCommand("rg", "rg"),
-		checkCommand("ffprobe", "ffprobe"),
-		checkPath("fish hook", filepath.Join(os.Getenv("HOME"), ".config", "fish", "functions", "fish_command_not_found.fish")),
+		{Name: "binary", OK: binaryPath != "", Detail: binaryPath},
 		checkPath("config", filepath.Join(os.Getenv("HOME"), ".config", "nlsh", "config.json")),
+		{Name: "shell", OK: shell != "", Detail: shell},
+		{Name: "shell context", OK: len(shellFiles) > 0, Detail: fmt.Sprintf("%d config file(s), %d aliases, %d functions", len(shellFiles), len(inventory.Aliases), len(inventory.Functions))},
+		{Name: "tool context", OK: len(inventory.Available) > 0, Detail: fmt.Sprintf("%d commands, %d aliases, %d functions", len(inventory.Available), len(inventory.Aliases), len(inventory.Functions))},
 		checkDir("session dir", config.Agent.SessionDir),
 		{Name: "mlx server", OK: mlxServerReady(config), Detail: config.MLX.Server.URL},
 		{Name: "local context", OK: pathExists(filepath.Join(cwd, ".nlsh-context")), Detail: filepath.Join(cwd, ".nlsh-context")},
 	}
 
 	fmt.Println()
-	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH Doctor ") + color(cMagenta, strings.Repeat("─", 58)))
+	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSHP Doctor ") + color(cMagenta, strings.Repeat("─", 57)))
 	for _, check := range checks {
 		status := color(cRed, "fail")
 		if check.OK {
@@ -2345,7 +2536,7 @@ func showLogs() error {
 		fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH Runtime Log ") + color(cMagenta, strings.Repeat("─", 52)))
 		hudLine("file  ", color(cGray, config.MLX.Server.LogFile))
 		hudLine("state ", color(cYellow, "no log yet"))
-		hudLine("hint  ", color(cGray, "run `nlsh-pro warm` or use agent mode to start the runtime"))
+		hudLine("hint  ", color(cGray, "run `"+commandName()+" warm` or use agent mode to start the runtime"))
 		fmt.Println(color(cMagenta, " ╰"+strings.Repeat("─", 72)))
 		return nil
 	}
@@ -2441,7 +2632,7 @@ func showStatus() {
 		localContextFound = "✅ Yes"
 	}
 
-	fmt.Println("\n\033[1;35m 🌌 NLSH-PRO | NEURAL LINK STATUS \033[0m")
+	fmt.Println("\n\033[1;35m 🌌 NLSHP | NEURAL LINK STATUS \033[0m")
 	fmt.Println("\033[38;5;238m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m")
 	fmt.Printf(" 📡 Engine:         \033[1;36m%s\033[0m\n", config.Engine)
 	if config.Engine == "mlx" {
@@ -2475,6 +2666,7 @@ func showStatus() {
 	fmt.Printf(" 🌍 Global Context: %s\n", globalContextFound)
 	fmt.Printf(" 📂 Local Context:  %s\n", localContextFound)
 	fmt.Printf(" 🧭 Agent Profile:  %s\n", config.Agent.Profile)
+	fmt.Printf(" 🐚 Shell Context:  %s\n", activeShell(config))
 	fmt.Printf(" 🧠 Agent Routing:  fast=%s smart=%s\n", config.Agent.FastModel, config.Agent.SmartModel)
 	fmt.Printf(" 🗃️  Agent Memory:   %s\n", config.Agent.SessionDir)
 	fmt.Println("\033[38;5;238m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m")
@@ -2515,7 +2707,7 @@ func showModelHUD() error {
 
 	if len(options) == 0 {
 		fmt.Println(color(cYellow, "No models found."))
-		fmt.Println(color(cGray, "Start the mlx-lm server, then run `nlsh-pro models` again."))
+		fmt.Println(color(cGray, "Start the mlx-lm server, then run `"+commandName()+" models` again."))
 		return nil
 	}
 	for i, option := range options {

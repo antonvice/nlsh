@@ -1,10 +1,10 @@
-# NLSH-Pro (Natural Language Shell Pro)
+# NLSHP (Natural Language Shell Pro)
 
 **The Ultimate VibeRot for Your Terminal.**
 
 > "Vibecoding brainrotted my brain, I cant even remember how to run simple cli commands anymore. halp!" — Anton Vice
 
-**NLSH-Pro** is a hyper-optimized, Go-based AI interceptor for the Fish shell. It completely removes the friction between your thoughts and your terminal actions. Unlike other tools that wrap your shell or require special modes, NLSH-Pro is **invisible** until you need it.
+**NLSHP** is a hyper-optimized, Go-based AI interceptor for your shell. It completely removes the friction between your thoughts and your terminal actions. Unlike other tools that wrap your shell or require special modes, NLSHP is **invisible** until you need it.
 
 ---
 
@@ -13,12 +13,12 @@
 - **🚀 Zero-Friction Interception**: Automatically catches typos and "command not found" errors.
 - **🧠 Managed MLX-LM Runtime**: Starts `mlx_lm.server` through `uv tool run --from mlx-lm` on `http://127.0.0.1:8765` and keeps the model warm between requests.
 - **🕹️ Agent Mode**: Type `!task` to enter an interactive HUD with request history, tool calls, results, and follow-up prompts.
-- **🧭 Model HUD**: Run `nlsh-pro models` to list OpenAI-compatible MLX server models, show Ollama models for comparison, and choose the active MLX model.
+- **🧭 Model HUD**: Run `nlshp models` to list OpenAI-compatible MLX server models, show Ollama models for comparison, and choose the active MLX model.
 - **🧰 Native Agent Tools**: Includes media/project/file inspectors, background task launch, clipboard copy, markdown report output, and per-directory session memory.
 - **🧯 Repair Loop**: Records stdout/stderr/duration for each tool call and retries common command failures once.
-- **🌊 Streaming Output**: Reads server-sent events from the local model runtime and streams tokens while preserving safe Fish capture.
+- **🌊 Streaming Output**: Reads server-sent events from the local model runtime and streams tokens while preserving safe shell capture.
 - **🌍 Context Awareness**:
-  - **Dynamic Tool Detection**: Scans your PATH plus Fish aliases/functions so it can suggest real tools like `rg`, `cat`, `bat`, `fd`, `git`, and your own shell helpers.
+  - **Dynamic Tool Detection**: Scans your PATH plus active-shell aliases/functions from Fish, Zsh, or Bash so it can suggest real tools like `rg`, `cat`, `bat`, `fd`, `git`, and your own shell helpers.
   - **Project Context**: Reads `.nlsh-context` in your current directory.
   - **Global Context**: Reads `~/.config/nlsh/context.md` for user-wide preferences.
 - **🛡️ Safety First**: Agent mode defaults to read-only tools and records what it ran.
@@ -33,17 +33,20 @@ cd nlsh-pro
 ./install-pro.sh
 ```
 
-Restart your shell: `exec fish`
+Restart your shell.
 
 ### Manual Install (Go)
 
 ```bash
-go install github.com/antonvice/nlsh-pro@latest
+git clone https://github.com/antonvice/nlsh-pro
+cd nlsh-pro
+go build -o nlshp .
+install -m 0755 nlshp ~/.local/bin/nlshp
 ```
 
 ## 🎮 Usage
 
-1. **Automatic Fix**: Just type a command. If it fails, NLSH-Pro intervenes.
+1. **Automatic Fix**: Just type a command. If it fails, NLSHP intervenes.
 
    ```bash
    > record data
@@ -70,22 +73,28 @@ go install github.com/antonvice/nlsh-pro@latest
 3. **Choose a model**:
 
    ```bash
-   > nlsh-pro models
+   > nlshp models
    ```
 
 4. **Check Status**:
 
    ```bash
-   > nlsh-pro status
+   > nlshp status
    ```
 
 5. **Open the command center**:
 
    ```bash
-   > nlsh-pro dashboard
+   > nlshp dashboard
    ```
 
-   The dashboard shows runtime readiness, active model, safety profile, current directory, available tools, quick commands, and recent agent memory.
+   The dashboard shows runtime readiness, active model, active shell, safety profile, current directory, available tools, quick commands, and recent agent memory.
+
+6. **See every command**:
+
+   ```bash
+   > nlshp help
+   ```
 
 ---
 
@@ -101,6 +110,7 @@ go install github.com/antonvice/nlsh-pro@latest
   - `NLSH_AGENT_PROFILE`: Set `read-only`, `confirm-write`, or `power`.
   - `NLSH_MLX_FAST_MODEL`: Override the model used for command planning.
   - `NLSH_MLX_SMART_MODEL`: Override the model used for final answers.
+  - `NLSH_SHELL`: Override shell context detection with `fish`, `zsh`, or `bash`.
   - `GEMINI_API_KEY`: Set your key here only if using the Gemini engine.
 
 Default model runtime:
@@ -126,6 +136,9 @@ Default model runtime:
     "reports": true,
     "background_tasks": true,
     "repair_retries": 1
+  },
+  "shell": {
+    "preferred": "fish"
   }
 }
 ```
@@ -165,16 +178,44 @@ Some workflows bypass the LLM command planner and run native helpers:
 
 ### Command Center
 
-NLSH-Pro includes a few terminal-native HUDs and utilities:
+NLSHP includes a few terminal-native HUDs and utilities:
 
-- `nlsh-pro dashboard`: command center with runtime, profile, tool, and memory status.
-- `nlsh-pro doctor`: health check for Fish hook, config, dependencies, context, sessions, and MLX server readiness.
-- `nlsh-pro sessions`: recent per-directory agent memory.
-- `nlsh-pro profile`: list safety profiles.
-- `nlsh-pro profile read-only`: switch safety profile.
-- `nlsh-pro warm`: start the managed MLX server before the first agent request.
-- `nlsh-pro logs`: show the tail of the MLX runtime log.
-- `nlsh-pro forget`: delete the saved agent session for the current directory.
+- `nlshp help`: complete command reference.
+- `nlshp dashboard`: command center with runtime, profile, shell, tool, and memory status.
+- `nlshp doctor`: health check for binary, shell config, tool context, sessions, context, and MLX server readiness.
+- `nlshp sessions`: recent per-directory agent memory.
+- `nlshp profile`: list safety profiles.
+- `nlshp profile read-only`: switch safety profile.
+- `nlshp warm`: start the managed MLX server before the first agent request.
+- `nlshp logs`: show the tail of the MLX runtime log.
+- `nlshp forget`: delete the saved agent session for the current directory.
+
+### Shell Context
+
+NLSHP prefers Fish shell context when Fish is configured, then falls back to the current `$SHELL`.
+You can override that with:
+
+```bash
+set -x NLSH_SHELL zsh
+```
+
+or in `~/.config/nlsh/config.json`:
+
+```json
+{
+  "shell": {
+    "preferred": "zsh"
+  }
+}
+```
+
+The active shell context pulls:
+
+- Executables from every directory in `PATH`.
+- Shell builtins for Fish, Zsh, or Bash.
+- Aliases and functions from active shell config files.
+- Project context from `.nlsh-context`.
+- Global context from `~/.config/nlsh/context.md`.
 
 ### Model Routing
 
@@ -183,11 +224,11 @@ NLSH can use different local models for different agent stages:
 - `fast_model`: command planning.
 - `smart_model`: final answer synthesis.
 
-Both default to the managed MLX model. Use `nlsh-pro models` to inspect the OpenAI-compatible MLX server model list and compare with Ollama models.
+Both default to the managed MLX model. Use `nlshp models` to inspect the OpenAI-compatible MLX server model list and compare with Ollama models.
 
 ## 🧙 Cool Factor & Status
 
-Run `nlsh-pro status` to see diagnostics.
+Run `nlshp status` or `nlshp help` to see diagnostics.
 
 Developed by **Anton Vice**.
 *Maximum VibeRot Achieved.*

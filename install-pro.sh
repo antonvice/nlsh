@@ -2,17 +2,18 @@
 set -e
 export PATH=$PATH:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin
 
-echo "🚀 Installing NLSH-Pro (The Ultimate NLSH)..."
+echo "🚀 Installing NLSHP (The Ultimate NLSH)..."
 
 # Build Go tool
 GO_BIN=$(command -v go || echo "/usr/local/go/bin/go")
 FISH_BIN=$(command -v fish || echo "/opt/homebrew/bin/fish")
 
 if [ -f "$GO_BIN" ]; then
-    "$GO_BIN" build -o nlsh-pro main.go
+    "$GO_BIN" build -o nlshp main.go
     mkdir -p ~/.local/bin
-    cp nlsh-pro ~/.local/bin/
-    echo "✅ Go binary built and installed to ~/.local/bin/nlsh-pro"
+    cp nlshp ~/.local/bin/
+    ln -sf "$HOME/.local/bin/nlshp" "$HOME/.local/bin/nlsh-pro"
+    echo "✅ Go binary built and installed to ~/.local/bin/nlshp"
 else
     echo "❌ Go not found in PATH or /usr/local/go/bin/go. Please install Go. If you just installed it, you might need to add it to your PATH."
     exit 1
@@ -36,9 +37,9 @@ if ! fish -c "contains $HOME/.local/bin \$fish_user_paths" 2>/dev/null; then
     echo "✅ Added ~/.local/bin to Fish path"
 fi
 
-echo "✨ Installation complete! Restart your fish shell or run 'source ~/.config/fish/config.fish'"
+echo "✨ Installation complete! Restart your shell."
 echo ""
-echo "🔥 NLSH-Pro is now active as a SHELL INTERCEPTOR."
+echo "🔥 NLSHP is now active as a SHELL INTERCEPTOR."
 echo "   1. Type a wrong command -> AI fixes it automatically."
-echo "   2. Press Alt+L -> AI suggests a command."
-echo "   3. Type '!task' -> Forces AI mode."
+echo "   2. Type '!task' -> Opens agent mode."
+echo "   3. Run 'nlshp help' -> See every command."

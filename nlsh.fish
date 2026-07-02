@@ -24,7 +24,15 @@ function __nlsh_pro_invoke
     # but we can simulate a very fast one or just a premium static line.
     
     # Actually, let's do a premium static status and then the result.
-    set -l suggested_cmd (~/.local/bin/nlsh-pro "$current_cmd")
+    set -l nlsh_cmd (command -sq nlshp; and command -v nlshp; or command -v nlsh-pro)
+    if test -z "$nlsh_cmd"
+        set_color -o red
+        echo " ❌ nlshp not found in PATH"
+        set_color normal
+        commandline -f repaint
+        return
+    end
+    set -l suggested_cmd ($nlsh_cmd "$current_cmd")
     
     # Clear the scanning line
     echo -ne "\r\033[K"
@@ -90,10 +98,15 @@ function fish_command_not_found
     end
 
     set_color -o yellow
-    echo " ⚡ Command '$cmd' not found. Routing to NLSH-Pro..."
+    echo " ⚡ Command '$cmd' not found. Routing to NLSHP..."
     set_color normal
 
-    set -l suggested_cmd (~/.local/bin/nlsh-pro "$argv")
+    set -l nlsh_cmd (command -sq nlshp; and command -v nlshp; or command -v nlsh-pro)
+    if test -z "$nlsh_cmd"
+        __fish_default_command_not_found_handler $argv
+        return
+    end
+    set -l suggested_cmd ($nlsh_cmd "$argv")
     if test -n "$suggested_cmd"; and not string match -q "API Error*" "$suggested_cmd"
         set_color -o green
         echo " ✨ AI suggests: $suggested_cmd"

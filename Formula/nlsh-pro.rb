@@ -9,7 +9,8 @@ class NlshPro < Formula
   depends_on "fish" => :optional
 
   def install
-    system "go", "build", *std_go_args(ldflags: "-s -w")
+    system "go", "build", "-ldflags", "-s -w", "-o", bin/"nlshp", "."
+    bin.install_symlink "nlshp" => "nlsh-pro"
     
     # Install fish functions (Homebrew specific pathing usually requires user setup)
     # We can install them to share/fish/vendor_functions.d if we want robust auto-loading
@@ -18,7 +19,7 @@ class NlshPro < Formula
 
   def caveats
     <<~EOS
-      NLSH-Pro installed!
+      NLSHP installed!
       
       To enable the interceptor, you may need to source your fish config:
         source ~/.config/fish/config.fish
@@ -30,6 +31,6 @@ class NlshPro < Formula
   end
 
   test do
-    assert_match "NLSH", shell_output("#{bin}/nlsh-pro status")
+    assert_match "NLSH", shell_output("#{bin}/nlshp status")
   end
 end
