@@ -56,6 +56,17 @@ go install github.com/antonvice/nlsh-pro@latest
    > !find all mp4 videos in here
    ```
 
+   Agent mode keeps a per-directory session, shows the plan, runs safe tools, prints a tool timeline, and then waits for follow-up questions.
+
+   Useful follow-ups:
+
+   ```bash
+   follow-up › which is longest video?
+   follow-up › inspect project metadata
+   follow-up › copy that
+   follow-up › save report
+   ```
+
 3. **Choose a model**:
 
    ```bash
@@ -68,6 +79,14 @@ go install github.com/antonvice/nlsh-pro@latest
    > nlsh-pro status
    ```
 
+5. **Open the command center**:
+
+   ```bash
+   > nlsh-pro dashboard
+   ```
+
+   The dashboard shows runtime readiness, active model, safety profile, current directory, available tools, quick commands, and recent agent memory.
+
 ---
 
 ## ⚙️ Configuration
@@ -75,9 +94,13 @@ go install github.com/antonvice/nlsh-pro@latest
 - **Config File**: `~/.config/nlsh/config.json`
 - **Global Context**: `~/.config/nlsh/context.md` (Add your preferences here, e.g., "Always use git status -sb")
 - **Project Context**: `.nlsh-context` in any directory.
+- **Agent Sessions**: `~/.config/nlsh/sessions/*.json` stores recent turns per working directory.
 - **Environment**:
   - `NLSH_ENGINE`: Force `mlx`, `gemini`, or `ollama`.
   - `NLSH_MLX_MODEL`: Override the MLX model.
+  - `NLSH_AGENT_PROFILE`: Set `read-only`, `confirm-write`, or `power`.
+  - `NLSH_MLX_FAST_MODEL`: Override the model used for command planning.
+  - `NLSH_MLX_SMART_MODEL`: Override the model used for final answers.
   - `GEMINI_API_KEY`: Set your key here only if using the Gemini engine.
 
 Default model runtime:
@@ -96,12 +119,71 @@ Default model runtime:
   },
   "agent": {
     "profile": "read-only",
+    "session_dir": "~/.config/nlsh/sessions",
     "fast_model": "sahilchachra/ornith-1.0-9b-mxfp4-mlx",
     "smart_model": "sahilchachra/ornith-1.0-9b-mxfp4-mlx",
+    "clipboard": true,
+    "reports": true,
+    "background_tasks": true,
     "repair_retries": 1
   }
 }
 ```
+
+### Agent Mode
+
+Agent mode is designed for terminal replacement workflows. It shows:
+
+- **Plan**: a visible checklist for request classification, tool choice, execution, and answer.
+- **Tool Timeline**: command, exit code, runtime, output size, stderr preview, and repair/retry notes.
+- **Result Preview**: numbered output lines with truncation for long results.
+- **Answer**: a concise final answer grounded in the tool output.
+- **Memory**: recent turns are saved by working directory and reused for follow-ups.
+
+### Safety Profiles
+
+- `read-only`: default. Allows safe discovery tools like `fd`, `rg`, `ls`, `cat`, `bat`, `du`, `wc`, and read-only `git` commands.
+- `confirm-write`: permits a small write-capable set such as `mkdir`, `touch`, `cp`, `mv`, `open`, and `pbcopy`.
+- `power`: wider command access while still blocking dangerous shell substitution/newline patterns.
+
+Set a profile for one shell:
+
+```bash
+set -x NLSH_AGENT_PROFILE confirm-write
+```
+
+### Native Agent Tools
+
+Some workflows bypass the LLM command planner and run native helpers:
+
+- **Media duration**: `which is longest video?`
+- **File/media metadata**: `inspect path/to/file.mp4`
+- **Project metadata**: `inspect project metadata`
+- **Clipboard**: `copy that`
+- **Markdown report**: `save report`
+- **Background task**: `tell me when npm run build finishes`
+
+### Command Center
+
+NLSH-Pro includes a few terminal-native HUDs and utilities:
+
+- `nlsh-pro dashboard`: command center with runtime, profile, tool, and memory status.
+- `nlsh-pro doctor`: health check for Fish hook, config, dependencies, context, sessions, and MLX server readiness.
+- `nlsh-pro sessions`: recent per-directory agent memory.
+- `nlsh-pro profile`: list safety profiles.
+- `nlsh-pro profile read-only`: switch safety profile.
+- `nlsh-pro warm`: start the managed MLX server before the first agent request.
+- `nlsh-pro logs`: show the tail of the MLX runtime log.
+- `nlsh-pro forget`: delete the saved agent session for the current directory.
+
+### Model Routing
+
+NLSH can use different local models for different agent stages:
+
+- `fast_model`: command planning.
+- `smart_model`: final answer synthesis.
+
+Both default to the managed MLX model. Use `nlsh-pro models` to inspect the OpenAI-compatible MLX server model list and compare with Ollama models.
 
 ## 🧙 Cool Factor & Status
 

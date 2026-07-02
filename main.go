@@ -892,6 +892,62 @@ func main() {
 		os.Exit(0)
 	}
 
+	if os.Args[1] == "dashboard" || os.Args[1] == "hud" || os.Args[1] == "home" {
+		if err := showDashboard(); err != nil {
+			fmt.Printf("Dashboard error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	if os.Args[1] == "doctor" {
+		if err := runDoctor(); err != nil {
+			fmt.Printf("Doctor error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	if os.Args[1] == "sessions" || os.Args[1] == "history" {
+		if err := showSessions(); err != nil {
+			fmt.Printf("Sessions error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	if os.Args[1] == "profile" || os.Args[1] == "mode" {
+		if err := manageProfile(os.Args[2:]); err != nil {
+			fmt.Printf("Profile error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	if os.Args[1] == "warm" {
+		if err := warmRuntime(); err != nil {
+			fmt.Printf("Warm error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	if os.Args[1] == "logs" || os.Args[1] == "log" {
+		if err := showLogs(); err != nil {
+			fmt.Printf("Log error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	if os.Args[1] == "forget" {
+		if err := forgetCurrentSession(); err != nil {
+			fmt.Printf("Forget error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	if os.Args[1] == "models" || os.Args[1] == "model" {
 		if err := showModelHUD(); err != nil {
 			fmt.Printf("Model HUD error: %v\n", err)
@@ -2070,6 +2126,303 @@ func stripANSI(s string) string {
 		b.WriteByte(c)
 	}
 	return b.String()
+}
+
+func showDashboard() error {
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	cwd, _ := os.Getwd()
+	inventory := getToolInventory()
+	sessions := recentSessionSummaries(config, 5)
+	ready := mlxServerReady(config)
+
+	fmt.Println()
+	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH Command Center ") + color(cMagenta, strings.Repeat("─", 51)))
+	hudLine("runtime", runtimeBadge(ready)+" "+color(cCyan, config.MLX.Server.URL))
+	hudLine("model  ", color(cCyan, config.MLX.Model))
+	hudLine("profile", profileBadge(config.Agent.Profile))
+	hudLine("cwd    ", color(cGreen, cwd))
+	hudLine("tools  ", fmt.Sprintf("%s available  %s aliases  %s functions", color(cCyan, fmt.Sprint(len(inventory.Available))), color(cCyan, fmt.Sprint(len(inventory.Aliases))), color(cCyan, fmt.Sprint(len(inventory.Functions)))))
+	fmt.Println(color(cMagenta, " ├"+strings.Repeat("─", 72)))
+	hudLine("quick  ", color(cGray, "nlsh-pro doctor  ·  nlsh-pro sessions  ·  nlsh-pro warm"))
+	hudLine("agent  ", color(cGray, "!ask anything  ·  copy that  ·  save report  ·  inspect project"))
+	hudLine("safety ", color(cGray, "nlsh-pro profile read-only|confirm-write|power"))
+	if len(sessions) > 0 {
+		fmt.Println(color(cMagenta, " ├"+strings.Repeat("─", 72)))
+		for i, session := range sessions {
+			hudLine(fmt.Sprintf("mem %d ", i+1), fmt.Sprintf("%s %s %s", color(cCyan, fmt.Sprintf("%d turn(s)", session.Turns)), color(cGray, session.Age), session.LastRequest))
+		}
+	}
+	fmt.Println(color(cMagenta, " ╰"+strings.Repeat("─", 72)))
+	return nil
+}
+
+func runDoctor() error {
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	cwd, _ := os.Getwd()
+	checks := []DoctorCheck{
+		checkCommand("nlsh-pro", "/opt/homebrew/bin/nlsh-pro"),
+		checkCommand("uv", "uv"),
+		checkCommand("mlx-lm server", "uv"),
+		checkCommand("fd", "fd"),
+		checkCommand("rg", "rg"),
+		checkCommand("ffprobe", "ffprobe"),
+		checkPath("fish hook", filepath.Join(os.Getenv("HOME"), ".config", "fish", "functions", "fish_command_not_found.fish")),
+		checkPath("config", filepath.Join(os.Getenv("HOME"), ".config", "nlsh", "config.json")),
+		checkDir("session dir", config.Agent.SessionDir),
+		{Name: "mlx server", OK: mlxServerReady(config), Detail: config.MLX.Server.URL},
+		{Name: "local context", OK: pathExists(filepath.Join(cwd, ".nlsh-context")), Detail: filepath.Join(cwd, ".nlsh-context")},
+	}
+
+	fmt.Println()
+	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH Doctor ") + color(cMagenta, strings.Repeat("─", 58)))
+	for _, check := range checks {
+		status := color(cRed, "fail")
+		if check.OK {
+			status = color(cGreen, "ok  ")
+		}
+		hudLine(status, fmt.Sprintf("%-14s %s", check.Name, color(cGray, check.Detail)))
+	}
+	fmt.Println(color(cMagenta, " ╰"+strings.Repeat("─", 72)))
+	return nil
+}
+
+type DoctorCheck struct {
+	Name   string
+	OK     bool
+	Detail string
+}
+
+func checkCommand(name, command string) DoctorCheck {
+	path, err := exec.LookPath(command)
+	if err != nil {
+		return DoctorCheck{Name: name, OK: false, Detail: command + " not found"}
+	}
+	return DoctorCheck{Name: name, OK: true, Detail: path}
+}
+
+func checkPath(name, path string) DoctorCheck {
+	return DoctorCheck{Name: name, OK: pathExists(path), Detail: path}
+}
+
+func checkDir(name, path string) DoctorCheck {
+	info, err := os.Stat(path)
+	return DoctorCheck{Name: name, OK: err == nil && info.IsDir(), Detail: path}
+}
+
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+type SessionSummary struct {
+	Path        string
+	Turns       int
+	LastRequest string
+	LastAnswer  string
+	UpdatedAt   time.Time
+	Age         string
+}
+
+func showSessions() error {
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	sessions := recentSessionSummaries(config, 20)
+	fmt.Println()
+	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH Sessions ") + color(cMagenta, strings.Repeat("─", 56)))
+	if len(sessions) == 0 {
+		hudLine("empty ", color(cGray, "no saved agent sessions yet"))
+	} else {
+		for i, session := range sessions {
+			hudLine(fmt.Sprintf("%2d   ", i+1), fmt.Sprintf("%s  %s  %s", color(cCyan, fmt.Sprintf("%d turn(s)", session.Turns)), color(cGray, session.Age), session.LastRequest))
+			if session.LastAnswer != "" {
+				hudLine("     ", color(cGray, truncateOneLine(session.LastAnswer, 96)))
+			}
+			hudLine("file ", color(cGray, session.Path))
+		}
+	}
+	fmt.Println(color(cMagenta, " ╰"+strings.Repeat("─", 72)))
+	return nil
+}
+
+func recentSessionSummaries(config *Config, limit int) []SessionSummary {
+	entries, err := os.ReadDir(config.Agent.SessionDir)
+	if err != nil {
+		return nil
+	}
+	var sessions []SessionSummary
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(config.Agent.SessionDir, entry.Name())
+		history := loadAgentSession(path)
+		if len(history) == 0 {
+			continue
+		}
+		info, err := entry.Info()
+		updated := time.Now()
+		if err == nil {
+			updated = info.ModTime()
+		}
+		last := history[len(history)-1]
+		sessions = append(sessions, SessionSummary{
+			Path:        path,
+			Turns:       len(history),
+			LastRequest: truncateOneLine(last.Request, 84),
+			LastAnswer:  truncateOneLine(last.Answer, 120),
+			UpdatedAt:   updated,
+			Age:         formatAge(time.Since(updated)),
+		})
+	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
+	})
+	if limit > 0 && len(sessions) > limit {
+		return sessions[:limit]
+	}
+	return sessions
+}
+
+func manageProfile(args []string) error {
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	if len(args) == 0 {
+		fmt.Println()
+		fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH Safety Profiles ") + color(cMagenta, strings.Repeat("─", 49)))
+		for _, profile := range []string{"read-only", "confirm-write", "power"} {
+			marker := " "
+			if config.Agent.Profile == profile {
+				marker = "*"
+			}
+			hudLine(marker+" "+profile, profileDescription(profile))
+		}
+		fmt.Println(color(cMagenta, " ╰"+strings.Repeat("─", 72)))
+		return nil
+	}
+	profile := normalizeAgentProfile(args[0])
+	config.Agent.Profile = profile
+	if err := saveConfig(config); err != nil {
+		return err
+	}
+	fmt.Println(color(cGreen, "selected profile ") + profile)
+	return nil
+}
+
+func warmRuntime() error {
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	fmt.Println(color(cMagenta, "warming mlx runtime ") + color(cGray, config.MLX.Server.URL))
+	if err := ensureMLXServer(config); err != nil {
+		return err
+	}
+	if !config.MLX.Server.ExternalApp {
+		startIdleReaper(config)
+	}
+	fmt.Println(color(cGreen, "runtime ready"))
+	return nil
+}
+
+func showLogs() error {
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(config.MLX.Server.LogFile)
+	if err != nil {
+		fmt.Println()
+		fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH Runtime Log ") + color(cMagenta, strings.Repeat("─", 52)))
+		hudLine("file  ", color(cGray, config.MLX.Server.LogFile))
+		hudLine("state ", color(cYellow, "no log yet"))
+		hudLine("hint  ", color(cGray, "run `nlsh-pro warm` or use agent mode to start the runtime"))
+		fmt.Println(color(cMagenta, " ╰"+strings.Repeat("─", 72)))
+		return nil
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	start := 0
+	if len(lines) > 80 {
+		start = len(lines) - 80
+	}
+	fmt.Println()
+	fmt.Println(color(cMagenta, " ╭─") + color(cBold+cMagenta, " NLSH Runtime Log ") + color(cMagenta, strings.Repeat("─", 52)))
+	hudLine("file  ", color(cGray, config.MLX.Server.LogFile))
+	fmt.Println(color(cMagenta, " ├"+strings.Repeat("─", 72)))
+	for _, line := range lines[start:] {
+		fmt.Println(" │ " + line)
+	}
+	fmt.Println(color(cMagenta, " ╰"+strings.Repeat("─", 72)))
+	return nil
+}
+
+func forgetCurrentSession() error {
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	cwd, _ := os.Getwd()
+	path := agentSessionPath(config, cwd)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	fmt.Println(color(cGreen, "forgot session ") + color(cGray, path))
+	return nil
+}
+
+func runtimeBadge(ready bool) string {
+	if ready {
+		return color(cGreen, "ready")
+	}
+	return color(cYellow, "cold ")
+}
+
+func profileBadge(profile string) string {
+	switch profile {
+	case "read-only":
+		return color(cGreen, profile)
+	case "confirm-write":
+		return color(cYellow, profile)
+	case "power":
+		return color(cRed, profile)
+	default:
+		return color(cGray, profile)
+	}
+}
+
+func profileDescription(profile string) string {
+	switch profile {
+	case "read-only":
+		return color(cGray, "safe discovery tools only")
+	case "confirm-write":
+		return color(cGray, "small write-capable set for files/apps")
+	case "power":
+		return color(cGray, "wide local command access with shell-substitution guardrails")
+	default:
+		return color(cGray, "unknown")
+	}
+}
+
+func formatAge(d time.Duration) string {
+	if d < time.Minute {
+		return "just now"
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 }
 
 func showStatus() {
